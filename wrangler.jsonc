@@ -6,14 +6,11 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "vars": {
-    "OPENROUTER_API_KEY": ""
-  },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "local-dev-db"
+      "database_name": "ikigai-sensei-production",
+      "database_id": "9e07b652-d52f-48ab-a855-4c08660e861f"
     }
   ]
 }
