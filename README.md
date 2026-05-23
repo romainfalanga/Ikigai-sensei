@@ -128,7 +128,7 @@ npm run build && npx wrangler pages deploy dist --project-name ikigai-sensei
 - **Runtime** : Cloudflare Pages / Workers
 - **Framework** : Hono v4
 - **IA** : OpenRouter API (Gemini 2.0 Flash)
-- **Base de données** : Cloudflare D1 (SQLite)
+- **Base de données** : Cloudflare D1 (SQLite) — `ikigai-sensei-production`
 - **Frontend** : Vanilla JS + TailwindCSS CDN
 - **Build** : Vite + @hono/vite-build
 - **Déploiement** : Wrangler
