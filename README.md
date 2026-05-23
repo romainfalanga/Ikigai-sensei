@@ -1,145 +1,152 @@
-# Ikigai Sensei - Découvre ta raison d'être
+# Ikigai Sensei V2.1 — Découvre ta raison d'être
 
 ## Présentation
 
-**Ikigai Sensei** est un outil conversationnel propulsé par IA qui t'aide à découvrir ton Ikigai — ce point d'intersection parfait entre ce que tu aimes, ce dans quoi tu es bon, ce pour quoi tu peux être payé, et ce dont le monde a besoin.
+**Ikigai Sensei** est un coach IA conversationnel qui t'aide à découvrir ton Ikigai — l'intersection parfaite entre ce que tu aimes, ce dans quoi tu es bon, ce pour quoi tu peux être payé, et ce dont le monde a besoin.
 
-L'agent IA (via OpenRouter) te guide à travers une conversation progressive, détecte automatiquement les éléments pertinents, les classe dans les 4 cercles de l'Ikigai, et peut même effectuer des recherches web pour enrichir la discussion.
+La V2.1 introduit une **mémoire arborescente complexe** (Graphe de Conscience), un système de comptes utilisateurs, et un moteur d'analyse IA capable de générer des insights, clusters et détecter des tensions créatives.
 
-## Fonctionnalités
+## ✅ Fonctionnalités V2.1
 
-### ✅ Implémentées
-- **Agent IA conversationnel** avec stratégie de découverte en 5 phases (Amorçage → Exploration → Classification → Challenge → Synthèse)
-- **Diagramme interactif des 4 cercles** de l'Ikigai (SVG) avec visualisation en temps réel
-- **Panneau de mémoire** affichant tous les éléments classés par catégorie
-- **Détection automatique** des éléments par l'IA avec le format `[ELEMENT:categorie:confiance]`
-- **Recherche web contextuelle** tous les 3 messages pour enrichir avec des tendances marché
-- **Persistance D1** (SQLite) pour sauvegarder sessions, messages et éléments
-- **Édition manuelle** des éléments (suppression, modification de catégorie)
-- **Export JSON** des résultats de la session
-- **Réinitialisation** de session
-- **Progression visuelle** (barre de progression + badge de phase)
-- **Quick replies** pour relancer la conversation
+### 🔐 Authentification
+- **Création de compte** avec email/mot de passe (hashé SHA-256)
+- **Login/Logout** avec JWT natif (Web Crypto API)
+- **Session persistante** via cookies HttpOnly (7 jours)
+- **Données utilisateur persistantes** dans D1
 
-### 🚧 À venir
-- Drag & drop des éléments entre les cercles
-- Export PDF du diagramme final
-- Suggestions d'Ikigai automatiques basées sur les intersections
-- Mode multi-sessions (comparer/archiver des sessions)
-- Support du mode vocal (Web Speech API)
-- Analyse des sentiments sur les réponses
+### 🧠 Mémoire Arborescente (Graphe de Conscience)
+- **9 types de nœuds** : concept, skill, experience, project, value, goal, fear, story, insight
+- **Arborescence profonde** : hiérarchie parent/enfant illimitée
+- **NodeContent riche** : niveau de compétence, statut projet, impact émotionnel, priorité, mots-clés...
+- **8 types de relations** : nourrit, contraste_avec, decoule_de, renforce, contredit, inspire, collabore_avec, est_une_sous_partie_de
+- **Tags libres** pour catégorisation transversale
+- **Export JSON** complet de la mémoire
 
-## Architecture
+### 🤖 Agent IA Enrichi
+- **Prompt système V2** : détection automatique de nœuds [NODE:...], relations [RELATION:...], clusters [CLUSTER:...]
+- **Contexte mémoire complet** envoyé à l'IA : arbre entier + NodeContent détaillé + relations
+- **Recherche web contextuelle** pour enrichir avec des tendances marché
+- **9 phases de découverte** : Amorçage → 4 explorations → Classification → Challenge → Synthèse → Complete
+
+### 💡 Insights & Clustering
+- **POST /api/insight/generate** : analyse complète de la carte de conscience
+- Détection de **clusters thématiques** (groupes de 3+ nœuds)
+- Identification de **tensions créatives** (dilemmes productifs)
+- Génération de **révélations** (insights personnalisés)
+- Suggestions de **prochaines étapes** concrètes
+
+### 🎨 Interface Utilisateur
+- **Login/Register** avec design immersif
+- **3 tabs** : Chat | Explorateur Mémoire | Insights
+- **Diagramme SVG interactif** des 4 cercles avec relations visibles
+- **Explorateur arborescent** avec expand/collapse, filtres par catégorie et type
+- **Détail de nœud** avec métadonnées et connexions
+- **Barre de stats** en temps réel (nœuds par cercle)
+- **Sidebar utilisateur** avec déconnexion
+
+## 🏗 Architecture
 
 ```
-Ikigai Sensei
-├── Frontend SPA (Vanilla JS + TailwindCSS)
-│   ├── Chat interactif avec l'agent
-│   ├── Diagramme SVG des 4 cercles
-│   └── Panneau de mémoire classé par catégorie
+Ikigai Sensei V2.1
+├── Frontend SPA : Vanilla JS + TailwindCSS CDN
+│   ├── Login/Register (email + password)
+│   ├── Chat conversationnel avec IA
+│   ├── Explorateur mémoire arborescent
+│   ├── Panneau Insights (clusters, tensions, révélations)
+│   └── Diagramme Ikigai SVG interactif
 │
 ├── Backend Hono (Cloudflare Workers)
-│   ├── POST /api/chat        → Conversation avec l'agent IA
-│   ├── GET  /api/session/:id → État complet de la session
-│   ├── PUT  /api/elements/:id → Modifier un élément
-│   ├── DELETE /api/elements/:id → Supprimer un élément
-│   ├── POST /api/session/reset → Réinitialiser
-│   └── GET  /api/session/:id/export → Export JSON
+│   ├── /api/auth/*           → Auth (register, login, logout, me)
+│   ├── /api/chat             → Conversation avec agent IA
+│   ├── /api/memory/*         → CRUD nœuds, relations, tags, export
+│   ├── /api/insight/generate → Analyse IA de la mémoire
+│   └── /api/session/*        → Gestion sessions
 │
 ├── Agent IA (OpenRouter - Gemini 2.0 Flash)
-│   ├── Prompt système spécialisé Ikigai
-│   ├── Classification automatique [ELEMENT:...]
+│   ├── Prompt système V2 enrichi (phases, clusters, relations)
+│   ├── Parsing [NODE:...], [RELATION:...], [CLUSTER:...], [INSIGHT:...]
+│   ├── Contexte mémoire complet (arbre + NodeContent + relations)
 │   └── Recherche web contextuelle
 │
-└── Persistance (Cloudflare D1 - SQLite)
-    ├── sessions
-    ├── ikigai_elements
-    ├── messages
-    └── session_state
+├── Persistance (Cloudflare D1 - SQLite)
+│   ├── users + password_hash
+│   ├── memory_nodes (arborescence)
+│   ├── memory_relations (connexions typées)
+│   ├── memory_tags + memory_node_tags
+│   ├── sessions + session_state
+│   ├── messages (historique)
+│   └── vues: v_memory_tree, v_memory_graph_summary
 ```
 
-## URLs
+## 📡 API Routes
 
-- **Production** : [https://ikigai-sensei.pages.dev](https://ikigai-sensei.pages.dev)
-- **API** : `/api/*`
-- **Session** : Chaque utilisateur a un ID de session unique stocké en localStorage
-- **Statut** : ✅ Déployé et opérationnel
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| POST | `/api/auth/register` | Non | Créer un compte |
+| POST | `/api/auth/login` | Non | Se connecter |
+| POST | `/api/auth/logout` | Non | Se déconnecter |
+| GET | `/api/auth/me` | Oui | Profil utilisateur |
+| POST | `/api/chat` | Oui | Envoyer un message à l'IA |
+| GET | `/api/session/:id` | Oui | État complet session |
+| POST | `/api/session/reset` | Oui | Réinitialiser session |
+| GET | `/api/memory/tree` | Oui | Arbre mémoire complet |
+| GET | `/api/memory/nodes` | Oui | Nœuds (filtrable) |
+| GET | `/api/memory/nodes/:id` | Oui | Détail nœud + relations |
+| POST | `/api/memory/nodes` | Oui | Créer un nœud |
+| PUT | `/api/memory/nodes/:id` | Oui | Modifier un nœud |
+| DELETE | `/api/memory/nodes/:id` | Oui | Supprimer (soft) |
+| POST | `/api/memory/relations` | Oui | Créer une relation |
+| DELETE | `/api/memory/relations/:id` | Oui | Supprimer une relation |
+| GET | `/api/memory/tags` | Oui | Lister les tags |
+| POST | `/api/memory/nodes/:id/tags` | Oui | Tagger un nœud |
+| GET | `/api/memory/stats` | Oui | Statistiques mémoire |
+| GET | `/api/memory/export` | Oui | Export JSON complet |
+| POST | `/api/insight/generate` | Oui | Générer analyse IA |
 
-## Guide d'utilisation
+## 🚀 URLs
 
-1. Lance la conversation : l'agent te pose une première question
-2. Réponds naturellement, comme si tu parlais à un coach
-3. L'IA détecte automatiquement les éléments et les place dans les cercles
-4. Observe le diagramme se remplir en temps réel
-5. L'agent te challenge et approfondit chaque cercle
-6. Quand tous les cercles sont bien remplis, l'IA propose des pistes d'Ikigai
+- **Production** : `https://ikigai-sensei.pages.dev`
+- **Statut** : ✅ Déployé
 
-**Astuces :**
-- Sois honnête et précis dans tes réponses
-- Utilise les "quick replies" si tu es bloqué
-- Tu peux supprimer manuellement des éléments dans le panneau mémoire
-- Le bouton 🔄 réinitialise ta session
+## ⚙️ Configuration
 
-## Configuration
+### .dev.vars (local)
+```
+OPENROUTER_API_KEY=sk-or-v1-...
+JWT_SECRET=ikigai-sensei-dev-secret-key-2026
+```
 
-### Variables d'environnement requises
+### Secrets Cloudflare (production)
+```bash
+npx wrangler pages secret put OPENROUTER_API_KEY --project-name ikigai-sensei
+npx wrangler pages secret put JWT_SECRET --project-name ikigai-sensei
+```
 
-| Variable | Description |
-|----------|-------------|
-| `OPENROUTER_API_KEY` | Clé API OpenRouter (format `sk-or-v1-...`) |
-
-### Déploiement local
+## 🛠️ Développement local
 
 ```bash
-# Installer les dépendances
 npm install
-
-# Appliquer les migrations D1
-npm run db:migrate:local
-
-# Configurer la clé API dans .dev.vars
-echo "OPENROUTER_API_KEY=sk-or-v1-ta-cle" > .dev.vars
-
-# Builder et lancer
 npm run build
-npm run dev:sandbox
+npx wrangler d1 migrations apply ikigai-sensei-production --local
+npm run dev:sandbox  # wrangler pages dev dist --d1=ikigai-sensei-production --local --ip 0.0.0.0 --port 3000
 ```
 
-### Déploiement Cloudflare Pages
+## 📊 Data Models
 
-```bash
-# Créer la base D1
-npx wrangler d1 create ikigai-sensei-production
+### MemoryNode
+- `id, user_id, title, description, content (JSON riche), category (passion|mission|vocation|profession), confidence, source, parent_id, depth, sort_order, is_expanded, is_archived, node_type (9 types)`
 
-# Ajouter database_id dans wrangler.jsonc
+### MemoryRelation
+- `id, user_id, source_node_id, target_node_id, relation_type (8 types), strength, description, source`
 
-# Appliquer les migrations
-npx wrangler d1 migrations apply ikigai-sensei-production --remote
+### MemoryTag / NodeContent — voir `src/types/index.ts`
 
-# Configurer le secret OpenRouter
-echo "sk-or-v1-ta-cle" | npx wrangler pages secret put OPENROUTER_API_KEY --project-name ikigai-sensei
-
-# Déployer
-npm run build && npx wrangler pages deploy dist --project-name ikigai-sensei
-```
-
-## Stack technique
-
-- **Runtime** : Cloudflare Pages / Workers
-- **Framework** : Hono v4
-- **IA** : OpenRouter API (Gemini 2.0 Flash)
-- **Base de données** : Cloudflare D1 (SQLite) — `ikigai-sensei-production`
-- **Frontend** : Vanilla JS + TailwindCSS CDN
-- **Build** : Vite + @hono/vite-build
-- **Déploiement** : Wrangler
-
-## Data Models
-
-- **Session** : `{ id, name, status, created_at }`
-- **IkigaiElement** : `{ id, session_id, content, category (passion|mission|vocation|profession), confidence, source, notes }`
-- **Message** : `{ id, session_id, role, content, phase }`
-- **SessionState** : `{ session_id, current_phase, completed_categories, interaction_count }`
+## 🔮 Prochaines étapes
+- Dashboard analytics (graphique d'évolution de la mémoire)
+- Mode vocal (Web Speech API)
+- Partage de carte de conscience (lien public)
+- Export PDF du diagramme Ikigai
+- Intégration Calendly/Notion pour les actions concrètes
 
 ---
-
-*Ikigai Sensei · Inspiré de la philosophie japonaise · 生きがい先生*
+*Ikigai Sensei V2.1 · Inspiré de la philosophie japonaise · 生きがい先生*
