@@ -48,11 +48,13 @@ async function authMiddleware(c: any, next: any) {
 
 api.post('/auth/register', async (c) => {
   try {
-    const body = await c.req.json<{
-      email: string; password: string; display_name?: string; name?: string;
-    }>();
-    const displayName = body.display_name || body.name || '';
-    const result = await registerUser(c.env.DB, body.email, body.password, displayName);
+    const rawText = await c.req.text();
+    let body: any = {};
+    try { body = JSON.parse(rawText); } catch { body = {}; }
+    const email = (body.email || '').toString();
+    const password = (body.password || '').toString();
+    const displayName = (body.display_name || body.name || '').toString();
+    const result = await registerUser(c.env.DB, email, password, displayName);
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 400);
     }
