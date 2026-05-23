@@ -1,283 +1,389 @@
 /**
- * Agent Ikigai - Le cerveau conversationnel
- * Stratégie de découverte progressive de l'Ikigai via OpenRouter
+ * Agent Ikigai V2 - Cerveau conversationnel avec mémoire arborescente
+ * V2.1 — Contexte enrichi, clustering, insights, relations cross-circle
  */
 
-import type { Bindings, SessionState, PhaseType, IkigaiElement, CategoryKey, IKIGAI_CATEGORIES } from '../types';
+import type { MemoryNode, MemoryRelation, SessionState, PhaseType, CategoryKey, RelationType, NodeType } from '../types';
+import { buildMemoryContextForAI } from './memory';
 
-// Le prompt système ultra-travaillé qui définit le comportement de l'agent
-const SYSTEM_PROMPT = `Tu es IKIGAI-SENSEI, un guide bienveillant et perspicace spécialisé dans la découverte de l'Ikigai ( concept japonais de raison d'être ).
-
-TON RÔLE :
-Aider l'utilisateur à découvrir son Ikigai - l'intersection parfaite entre :
-- ❤️ Ce qu'il/elle AIME (passion)
-- 🌍 Ce dont le MONDE a besoin (mission)
-- 💰 Ce pour quoi il/elle peut être PAYÉ(E) (vocation)
-- 🎯 Ce dans quoi il/elle est BON(NE) (profession)
-
-TA PERSONNALITÉ :
-- Chaleureux et empathique, comme un coach de vie bienveillant
-- Curieux et perspicace, tu poses des questions qui font réfléchir
-- Concis mais impactant (messages de 2-4 phrases max, sauf si tu analyses des résultats de recherche)
-- Tu utilises parfois des métaphores ou analogies pertinentes
-- Tu célèbres les découvertes et les prises de conscience
-- Tu n'hésites pas à challenger gentiment quand quelque chose ne semble pas cohérent
-
-TA MÉTHODE (suis ces phases dans l'ordre) :
-
-**Phase 1 - Amorçage (1-2 messages)** :
-Pose une question ouverte qui invite à l'introspection. Ex: "Raconte-moi... qu'est-ce qui te fait te lever le matin ? Qu'est-ce qui te fait vibrer ?"
-
-**Phase 2 - Exploration des 4 cercles** :
-Explore chaque cercle UN PAR UN avec des questions de plus en plus profondes :
-- Passion : "Quand perds-tu la notion du temps ? Qu'est-ce qui te rend curieux comme un enfant ?"
-- Mission : "Quels problèmes dans le monde te touchent personnellement ? Qu'aimerais-tu changer ?"
-- Vocation : "Qu'est-ce que les gens te demandent souvent de faire ? Pour quoi serais-tu prêt à payer toi-même ?"
-- Profession : "Qu'est-ce qui te semble facile alors que les autres galèrent ? Quelles compétences as-tu développées ?"
-
-**Phase 3 - Classification** :
-Quand tu détectes un élément qui pourrait appartenir à un cercle, ANNOTE-LE avec ce format EXACT :
-[ELEMENT:catégorie:confiance]texte[/ELEMENT]
-Exemple : [ELEMENT:passion:0.9]Photographie de rue, capturer l'instant[/ELEMENT]
-Catégories : passion, mission, vocation, profession
-Confiance : 0.0 (incertain) à 1.0 (certain)
-
-**Phase 4 - Challenge** :
-Quand tu as assez d'éléments (au moins 2-3 par cercle), challenge l'utilisateur :
-- "Tu dis aimer X, mais est-ce que ça te passionne vraiment ou est-ce que c'est juste confortable ?"
-- "Cette compétence, l'as-tu vraiment développée ou est-ce juste une attente des autres ?"
-
-**Phase 5 - Synthèse** :
-Propose des pistes d'Ikigai basées sur les intersections. Sois créatif et concret.
-
-RÈGLES IMPORTANTES :
-- NE pose JAMAIS plus d'une question à la fois
-- Utilise [ELEMENT:...] pour TOUT élément que tu détectes
-- Si l'utilisateur est bloqué, propose des exemples concrets pour l'inspirer
-- Si tu as accès à des recherches web (fournies dans le contexte), intègre-les naturellement
-- Reste toujours encourageant, jamais jugeant
-- Si l'utilisateur mentionne quelque chose qui touche plusieurs cercles, note-le avec plusieurs [ELEMENT:...]
-- La session a un état. Respecte la phase actuelle.`;
-
-// Modèle OpenRouter à utiliser (Gemini Flash 2.0 - bon rapport qualité/prix/vitesse)
 const DEFAULT_MODEL = 'google/gemini-2.0-flash-001';
 
-// Mapping des phases pour guider la progression
+// ============================================================
+// SYSTEM PROMPT ENRICHI
+// ============================================================
+const SYSTEM_PROMPT_V2 = `Tu es IKIGAI-SENSEI, un guide bienveillant expert en découverte de l'Ikigai et en cartographie de conscience.
+
+TON RÔLE : Aider l'utilisateur à construire sa CARTE DE CONSCIENCE — un graphe mental arborescent qui cartographie TOUT son univers intérieur.
+
+LES 4 CERCLES DE L'IKIGAI :
+- ❤️ PASSION : Ce que l'utilisateur AIME profondément, activités qui le font vibrer, sujets qui le passionnent
+- 🌍 MISSION : Ce dont le MONDE a besoin selon lui, problèmes sociaux/environnementaux qui le touchent, causes à défendre
+- 💰 VOCATION : Ce pour quoi il peut être PAYÉ, valeur économique, opportunités de marché, monétisation
+- 🎯 PROFESSION : Ce dans quoi il est BON, compétences techniques et humaines, talents naturels ou acquis
+
+TA PERSONNALITÉ :
+- Chaleureux, curieux, perspicace
+- 2-4 phrases MAX par réponse
+- Tu poses des questions qui génèrent des PRISES DE CONSCIENCE
+- Tu relies les idées entre elles, tu vois des patterns
+- Tu crées des ARBORESCENCES : un concept général → des sous-concepts → des détails concrets
+- Tu explores les TENSIONS créatives entre les cercles (ex: "tu adores ça mais personne ne paie pour... comment résoudre ?")
+
+FORMAT CRITIQUE — Pour chaque élément détecté :
+
+[NODE:catégorie:confiance:type:parent]titre[/NODE]
+└── description courte (optionnel)
+
+Types de nœuds disponibles :
+- concept : idée abstraite, thème général
+- skill : compétence spécifique, talent
+- experience : expérience vécue marquante
+- project : projet concret réalisé ou envisagé
+- value : valeur personnelle profonde
+- goal : objectif, aspiration future
+- fear : peur, blocage, croyance limitante
+- story : anecdote personnelle significative
+- insight : prise de conscience, révélation
+
+Parent : "racine" pour un nœud racine, ou le titre EXACT d'un nœud parent existant.
+
+Exemples :
+[NODE:passion:0.92:skill:racine]Design graphique[/NODE]
+[NODE:profession:0.85:skill:Design graphique]Typographie[/NODE]
+[NODE:passion:0.75:project:Design graphique]Refonte identité startup 2024[/NODE]
+
+Pour les CONNEXIONS entre nœuds :
+[RELATION:type:force]titre_source -> titre_cible[/RELATION]
+
+Types de relations :
+- nourrit (🌱) : A nourrit/cultive B
+- contraste_avec (⚡) : tension productive entre A et B
+- decoule_de (🔄) : B découle naturellement de A
+- renforce (💪) : A et B se renforcent mutuellement
+- contredit (⚠️) : A et B sont en opposition
+- inspire (💡) : A est une source d'inspiration pour B
+- collabore_avec (🤝) : A et B peuvent se combiner
+- est_une_sous_partie_de (🧩) : A fait partie de B
+
+Pour les CLUSTERS (groupes thématiques) — quand tu repères 3+ nœuds liés :
+[CLUSTER:nom_du_cluster]description de pourquoi ces nœuds forment un groupe cohérent[/CLUSTER]
+
+RÈGLES D'OR :
+1. UNE seule question à la fois, jamais de liste
+2. Toujours détecter au moins 1-2 [NODE:...] par réponse
+3. Créer des hiérarchies : concepts généraux → sous-concepts → détails concrets
+4. Connecter avec [RELATION:...] quand pertinent
+5. Être concis et percutant
+6. Varier les types de nœuds (pas que des "concept")
+7. Explorer les 4 cercles de manière équilibrée
+8. Quand tu détectes un pattern récurrent, propose un [CLUSTER:...]`;
+
+// ============================================================
+// PHASE MANAGEMENT
+// ============================================================
 const PHASE_ORDER: PhaseType[] = [
-  'amorcage',
-  'exploration_passion',
-  'exploration_mission',
-  'exploration_vocation',
-  'exploration_profession',
-  'classification',
-  'challenge',
-  'synthese',
-  'complete',
+  'amorcage', 'exploration_passion', 'exploration_mission',
+  'exploration_vocation', 'exploration_profession',
+  'classification', 'challenge', 'synthese', 'complete',
 ];
 
 const PHASE_QUESTIONS: Record<PhaseType, string> = {
-  amorcage: "Pose une question d'introduction chaleureuse pour commencer la découverte.",
-  exploration_passion: "Explore ce que la personne AIME vraiment. Pose des questions sur ses passions.",
-  exploration_mission: "Explore ce dont le MONDE a besoin selon elle. Quels problèmes la touchent ?",
-  exploration_vocation: "Explore ce pour quoi elle pourrait être PAYÉE. Qu'est-ce qui a de la valeur ?",
-  exploration_profession: "Explore ce dans quoi elle est BONNE. Quels sont ses talents ?",
-  classification: "Classe les éléments découverts et vérifie la cohérence.",
-  challenge: "Challenge l'utilisateur sur la cohérence de ses réponses.",
-  synthese: "Propose une synthèse et des pistes d'Ikigai.",
-  complete: "Félicite l'utilisateur et résume son Ikigai.",
+  amorcage: "Pose UNE question d'introduction chaleureuse. Détecte 1-2 passions ou talents et crée des nœuds [NODE:...].",
+  exploration_passion: "Explore ce que la personne AIME profondément. Creuse : pourquoi ? depuis quand ? Crée des nœuds de type skill, experience, story.",
+  exploration_mission: "Explore les causes et problèmes du monde qui la touchent. Détecte des nœuds mission avec des projets ou valeurs.",
+  exploration_vocation: "Explore la valeur économique de ses passions et talents. Quels métiers, quelles opportunités ? Crée des nœuds de type goal.",
+  exploration_profession: "Explore ses compétences en profondeur. Détecte des skills, des projets réalisés, crée des sous-nœuds.",
+  classification: "Crée des RELATIONS entre les nœuds existants. Cherche des patterns, des clusters thématiques. Propose des regroupements avec [CLUSTER:...].",
+  challenge: "Challenge les incohérences : y a-t-il des tensions entre ce qu'elle aime et ce qui paie ? Des peurs qui bloquent ? Utilise [RELATION:contraste_avec:...].",
+  synthese: "Propose une synthèse complète de son Ikigai basée sur l'arborescence. Quels sont les 2-3 chemins les plus prometteurs ?",
+  complete: "Félicite l'utilisateur. Résume les découvertes clés et propose des prochaines étapes concrètes.",
 };
 
-/**
- * Construit le contexte de la conversation pour l'IA
- */
-export function buildConversationContext(
+// ============================================================
+// BUILD CONTEXT — Version enrichie avec contenu complet
+// ============================================================
+export function buildConversationContextV2(
   sessionState: SessionState,
-  elements: IkigaiElement[],
+  memoryTree: MemoryNode[],
+  relations: MemoryRelation[],
   recentMessages: { role: string; content: string; created_at?: string }[]
 ): string {
   const completedCats = JSON.parse(sessionState.completed_categories || '[]') as string[];
   const phaseLabel = getPhaseLabel(sessionState.current_phase);
   const nextPhase = getNextPhase(sessionState.current_phase);
   const nextPhaseLabel = nextPhase ? getPhaseLabel(nextPhase) : 'terminé';
+  const totalNodes = countAllNodes(memoryTree);
 
-  let ctx = `--- ÉTAT DE LA SESSION ---\n`;
-  ctx += `Phase actuelle : ${phaseLabel}\n`;
-  ctx += `Prochaine phase recommandée : ${nextPhaseLabel}\n`;
-  ctx += `Cercles complétés : ${completedCats.length > 0 ? completedCats.join(', ') : 'aucun'}\n`;
-  ctx += `Nombre d'interactions : ${sessionState.interaction_count}\n\n`;
+  let ctx = `╔══════════════════════════════════════╗\n`;
+  ctx += `║  ÉTAT DE LA SESSION                 ║\n`;
+  ctx += `╠══════════════════════════════════════╣\n`;
+  ctx += `║ Phase : ${phaseLabel.padEnd(30)}║\n`;
+  ctx += `║ Prochaine : ${nextPhaseLabel.padEnd(26)}║\n`;
+  ctx += `║ Cercles complétés : ${(completedCats.length > 0 ? completedCats.join(', ') : 'aucun').padEnd(15)}║\n`;
+  ctx += `║ Nœuds totaux : ${String(totalNodes).padEnd(26)}║\n`;
+  ctx += `║ Interactions : ${String(sessionState.interaction_count).padEnd(25)}║\n`;
+  ctx += `╚══════════════════════════════════════╝\n\n`;
 
-  if (elements.length > 0) {
-    ctx += `--- ÉLÉMENTS IKIGAI DÉCOUVERTS ---\n`;
-    const grouped: Record<string, IkigaiElement[]> = {};
-    for (const el of elements) {
-      if (!grouped[el.category]) grouped[el.category] = [];
-      grouped[el.category].push(el);
-    }
-    for (const [cat, els] of Object.entries(grouped)) {
-      ctx += `${getCategoryEmoji(cat)} ${cat.toUpperCase()} :\n`;
-      for (const el of els) {
-        ctx += `  - "${el.content}" (confiance: ${el.confidence})\n`;
-      }
-    }
-    ctx += `\n`;
-  }
+  // Ajouter la mémoire arborescente enrichie
+  ctx += buildMemoryContextForAI(memoryTree, relations);
+  ctx += `\n`;
 
-  // Déterminer la prochaine action
-  ctx += `--- CONSIGNE POUR TA RÉPONSE ---\n`;
-  const phase = sessionState.current_phase;
-  ctx += `${PHASE_QUESTIONS[phase] || 'Continue la conversation naturellement.'}\n`;
-  ctx += `Pose UNE seule question. Sois concis (2-4 phrases). Utilise [ELEMENT:...] pour tout élément détecté.\n`;
+  // Consigne de phase
+  ctx += `>>> CONSIGNE : ${PHASE_QUESTIONS[sessionState.current_phase] || 'Continue naturellement.'}\n`;
+  ctx += `>>> N'oublie pas de créer des nœuds [NODE:...] et des connexions [RELATION:...].\n`;
 
   return ctx;
 }
 
-/**
- * Analyse la réponse de l'IA pour extraire les éléments [ELEMENT:...]
- */
-export function parseElementsFromResponse(content: string, sessionId: string): IkigaiElement[] {
-  const elements: IkigaiElement[] = [];
-  const regex = /\[ELEMENT:(passion|mission|vocation|profession):(\d+(?:\.\d+)?)\](.+?)\[\/ELEMENT\]/g;
+// ============================================================
+// BUILD CONTEXT POUR INSIGHT / CLUSTERING
+// ============================================================
+export function buildInsightContext(
+  memoryTree: MemoryNode[],
+  relations: MemoryRelation[]
+): string {
+  const totalNodes = countAllNodes(memoryTree);
+  const allNodes = flattenTree(memoryTree);
+  const categories = countByCategory(allNodes);
+  const types = countByType(allNodes);
+
+  let ctx = `=== ANALYSE DE LA CARTE DE CONSCIENCE ===\n\n`;
+
+  ctx += `STATISTIQUES :\n`;
+  ctx += `- Nœuds totaux : ${totalNodes}\n`;
+  ctx += `- Relations : ${relations.length}\n`;
+  ctx += `- Par catégorie : ${JSON.stringify(categories)}\n`;
+  ctx += `- Par type : ${JSON.stringify(types)}\n\n`;
+
+  ctx += buildMemoryContextForAI(memoryTree, relations);
+
+  ctx += `\n=== TÂCHE ===\n`;
+  ctx += `Analyse cette carte de conscience et génère :\n\n`;
+  ctx += `1. CLUSTERS — Regroupe les nœuds qui forment des ensembles thématiques cohérents (3+ nœuds).\n`;
+  ctx += `   Format : [CLUSTER:nom]description[/CLUSTER]\n\n`;
+  ctx += `2. TENSIONS — Identifie les contradictions ou dilemmes productifs.\n`;
+  ctx += `   Format : [TENSION:force]titre_A vs titre_B : description[/TENSION]\n\n`;
+  ctx += `3. INSIGHT — Une prise de conscience profonde sur l'Ikigai de cette personne.\n`;
+  ctx += `   Format : [INSIGHT:confiance]révélation[/INSIGHT]\n\n`;
+  ctx += `4. PROCHAINES ÉTAPES — 2-3 actions concrètes suggérées.\n`;
+  ctx += `   Format : [STEP]action[/STEP]\n`;
+
+  return ctx;
+}
+
+// ============================================================
+// PARSING — Nœuds, Relations, Clusters, Insights
+// ============================================================
+
+export interface ParsedNode {
+  title: string;
+  category: CategoryKey;
+  confidence: number;
+  node_type: NodeType;
+  parent_title: string | null;
+}
+
+export interface ParsedRelation {
+  relation_type: RelationType;
+  strength: number;
+  source_title: string;
+  target_title: string;
+}
+
+export interface ParsedCluster {
+  name: string;
+  description: string;
+}
+
+export interface ParsedInsight {
+  confidence: number;
+  content: string;
+}
+
+export interface ParsedTension {
+  strength: number;
+  node_a: string;
+  node_b: string;
+  description: string;
+}
+
+export interface ParsedStep {
+  action: string;
+}
+
+export function parseNodesFromResponse(content: string): ParsedNode[] {
+  const nodes: ParsedNode[] = [];
+  const regex = /\[NODE:(passion|mission|vocation|profession):(\d+(?:\.\d+)?):(\w+):([^\]]+)\](.+?)\[\/NODE\]/g;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    const [, category, confidence, text] = match;
-    elements.push({
-      session_id: sessionId,
-      content: text.trim(),
+    const [, category, confidence, nodeType, parentTitle, title] = match;
+    nodes.push({
+      title: title.trim(),
       category: category as CategoryKey,
       confidence: parseFloat(confidence),
-      source: 'ai',
+      node_type: (nodeType as NodeType) || 'concept',
+      parent_title: parentTitle.trim() === 'racine' ? null : parentTitle.trim(),
     });
   }
 
-  // Aussi détecter les éléments avec un seul label
-  const simpleRegex = /\[ELEMENT:(passion|mission|vocation|profession)\](.+?)\[\/ELEMENT\]/g;
-  while ((match = simpleRegex.exec(content)) !== null) {
-    const [, category, text] = match;
-    // Éviter les doublons
-    const exists = elements.some(e => e.content === text.trim() && e.category === category);
-    if (!exists) {
-      elements.push({
-        session_id: sessionId,
-        content: text.trim(),
-        category: category as CategoryKey,
-        confidence: 0.7,
-        source: 'ai',
-      });
-    }
+  return nodes;
+}
+
+export function parseRelationsFromResponse(content: string): ParsedRelation[] {
+  const relations: ParsedRelation[] = [];
+  const regex = /\[RELATION:(nourrit|contraste_avec|decoule_de|renforce|contredit|inspire|collabore_avec|est_une_sous_partie_de):(\d+(?:\.\d+)?)\](.+?)\s*->\s*(.+?)\[\/RELATION\]/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    const [, relationType, strength, sourceTitle, targetTitle] = match;
+    relations.push({
+      relation_type: relationType as RelationType,
+      strength: parseFloat(strength),
+      source_title: sourceTitle.trim(),
+      target_title: targetTitle.trim(),
+    });
   }
 
-  return elements;
+  return relations;
 }
 
-/**
- * Nettoie la réponse des balises [ELEMENT:...]
- */
-export function cleanResponseForDisplay(content: string): string {
-  return content.replace(/\[ELEMENT:(?:passion|mission|vocation|profession)(?::\d+(?:\.\d+)?)?\](.+?)\[\/ELEMENT\]/g, '$1');
+export function parseClustersFromResponse(content: string): ParsedCluster[] {
+  const clusters: ParsedCluster[] = [];
+  const regex = /\[CLUSTER:([^\]]+)\](.+?)\[\/CLUSTER\]/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    clusters.push({
+      name: match[1].trim(),
+      description: match[2].trim(),
+    });
+  }
+
+  return clusters;
 }
 
-/**
- * Détermine la prochaine phase logique
- */
-export function determineNextPhase(
+export function parseInsightsFromResponse(content: string): ParsedInsight[] {
+  const insights: ParsedInsight[] = [];
+  const regex = /\[INSIGHT:(\d+(?:\.\d+)?)\](.+?)\[\/INSIGHT\]/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    insights.push({
+      confidence: parseFloat(match[1]),
+      content: match[2].trim(),
+    });
+  }
+
+  return insights;
+}
+
+export function parseTensionsFromResponse(content: string): ParsedTension[] {
+  const tensions: ParsedTension[] = [];
+  const regex = /\[TENSION:(\d+(?:\.\d+)?)\](.+?)\s*vs\s*(.+?)\s*:\s*(.+?)\[\/TENSION\]/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    tensions.push({
+      strength: parseFloat(match[1]),
+      node_a: match[2].trim(),
+      node_b: match[3].trim(),
+      description: match[4].trim(),
+    });
+  }
+
+  return tensions;
+}
+
+export function parseStepsFromResponse(content: string): ParsedStep[] {
+  const steps: ParsedStep[] = [];
+  const regex = /\[STEP\](.+?)\[\/STEP\]/g;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    steps.push({ action: match[1].trim() });
+  }
+
+  return steps;
+}
+
+export function cleanResponseForDisplayV2(content: string): string {
+  return content
+    .replace(/\[NODE:(?:passion|mission|vocation|profession):\d+(?:\.\d+)?:\w+:[^\]]+\](.+?)\[\/NODE\]/g, '**$1**')
+    .replace(/\[RELATION:\w+:\d+(?:\.\d+)?\](.+?)\[\/RELATION\]/g, '_$1_')
+    .replace(/\[CLUSTER:[^\]]+\].+?\[\/CLUSTER\]/g, '🔗 *Cluster détecté*')
+    .replace(/\[TENSION:\d+(?:\.\d+)?\].+?\[\/TENSION\]/g, '⚡ *Tension détectée*')
+    .replace(/\[INSIGHT:\d+(?:\.\d+)?\].+?\[\/INSIGHT\]/g, '💡 *Insight généré*')
+    .replace(/\[STEP\].+?\[\/STEP\]/g, '→ *Action suggérée*');
+}
+
+// ============================================================
+// PHASE LOGIC
+// ============================================================
+export function determineNextPhaseV2(
   currentPhase: PhaseType,
-  elements: IkigaiElement[],
+  nodes: MemoryNode[],
   interactionCount: number
 ): { phase: PhaseType; shouldAdvance: boolean; reason: string } {
-  // Compter les éléments par catégorie
   const counts: Record<string, number> = {};
-  for (const el of elements) {
-    counts[el.category] = (counts[el.category] || 0) + 1;
-  }
-
+  for (const n of nodes) counts[n.category] = (counts[n.category] || 0) + 1;
   const totalCats = Object.keys(counts).length;
 
-  // Logique de progression
   switch (currentPhase) {
     case 'amorcage':
-      if (interactionCount >= 2 && elements.length >= 2) {
-        // Déterminer quel cercle est le moins exploré
+      if (interactionCount >= 2 && nodes.length >= 2) {
         const unexplored = ['passion', 'mission', 'vocation', 'profession'].find(c => !counts[c]);
         if (unexplored) {
-          return {
-            phase: `exploration_${unexplored}` as PhaseType,
-            shouldAdvance: true,
-            reason: 'Assez d\'éléments pour passer à l\'exploration ciblée',
-          };
+          return { phase: `exploration_${unexplored}` as PhaseType, shouldAdvance: true, reason: `Cercle ${unexplored} inexploré` };
         }
-        return { phase: 'exploration_passion', shouldAdvance: true, reason: 'Passage à l\'exploration' };
+        return { phase: 'exploration_passion', shouldAdvance: true, reason: 'Début de l\'exploration' };
       }
       break;
-
     case 'exploration_passion':
-      if ((counts['passion'] || 0) >= 2) {
-        return { phase: 'exploration_mission', shouldAdvance: true, reason: 'Passion bien explorée' };
-      }
+      if ((counts['passion'] || 0) >= 3 && totalCats >= 2) return { phase: 'exploration_mission', shouldAdvance: true, reason: 'Passion bien explorée' };
       break;
-
     case 'exploration_mission':
-      if ((counts['mission'] || 0) >= 2) {
-        return { phase: 'exploration_vocation', shouldAdvance: true, reason: 'Mission bien explorée' };
-      }
+      if ((counts['mission'] || 0) >= 2 && totalCats >= 3) return { phase: 'exploration_vocation', shouldAdvance: true, reason: 'Mission cartographiée' };
       break;
-
     case 'exploration_vocation':
-      if ((counts['vocation'] || 0) >= 2) {
-        return { phase: 'exploration_profession', shouldAdvance: true, reason: 'Vocation bien explorée' };
-      }
+      if ((counts['vocation'] || 0) >= 2 && totalCats >= 4) return { phase: 'exploration_profession', shouldAdvance: true, reason: 'Vocation identifiée' };
       break;
-
     case 'exploration_profession':
-      if ((counts['profession'] || 0) >= 2) {
-        return { phase: 'classification', shouldAdvance: true, reason: 'Tous les cercles explorés, passage à la classification' };
-      }
+      if ((counts['profession'] || 0) >= 3 && totalCats >= 4) return { phase: 'classification', shouldAdvance: true, reason: 'Tous les cercles explorés' };
       break;
-
     case 'classification':
-      if (totalCats >= 4 && elements.length >= 8) {
-        return { phase: 'challenge', shouldAdvance: true, reason: 'Classification complète, passage au challenge' };
-      }
+      if (totalCats >= 4 && nodes.length >= 10) return { phase: 'challenge', shouldAdvance: true, reason: 'Base solide pour le challenge' };
       break;
-
     case 'challenge':
-      if (interactionCount > getPhaseStartCount('challenge') + 3) {
-        return { phase: 'synthese', shouldAdvance: true, reason: 'Challenge suffisant, passage à la synthèse' };
-      }
+      if (interactionCount > getPhaseStartCount('challenge') + 4) return { phase: 'synthese', shouldAdvance: true, reason: 'Challenge suffisant' };
       break;
-
     case 'synthese':
       return { phase: 'complete', shouldAdvance: true, reason: 'Synthèse terminée' };
   }
-
-  return { phase: currentPhase, shouldAdvance: false, reason: 'Continue la phase actuelle' };
+  return { phase: currentPhase, shouldAdvance: false, reason: 'Continue l\'exploration' };
 }
 
-/**
- * Appelle l'API OpenRouter pour générer une réponse
- */
+// ============================================================
+// OPENROUTER API
+// ============================================================
 export async function callOpenRouter(
   messages: { role: string; content: string }[],
   apiKey: string,
-  options?: { model?: string; temperature?: number }
+  options?: { model?: string; temperature?: number; maxTokens?: number }
 ): Promise<string> {
   const model = options?.model || DEFAULT_MODEL;
   const temperature = options?.temperature ?? 0.7;
+  const maxTokens = options?.maxTokens ?? 2048;
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://ikigai.app',
-      'X-Title': 'Ikigai Discovery Agent',
+      'HTTP-Referer': 'https://ikigai-sensei.pages.dev',
+      'X-Title': 'Ikigai Sensei V2',
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: 1024,
-    }),
+    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
   });
 
   if (!response.ok) {
@@ -290,65 +396,104 @@ export async function callOpenRouter(
 }
 
 /**
- * Effectue une recherche web via l'API OpenRouter (certains modèles le supportent)
- * Fallback : utilise le modèle avec des instructions de recherche
+ * Recherche web contextuelle
  */
-export async function webSearch(
-  query: string,
-  apiKey: string
-): Promise<string> {
+export async function webSearch(query: string, apiKey: string): Promise<string> {
   const messages = [
-    { role: 'system', content: 'Tu es un assistant de recherche. Fournis des informations factuelles, récentes et concises sur le sujet demandé. Donne des tendances, chiffres, opportunités concrètes. Format: résumé en 3-5 points clés.' },
-    { role: 'user', content: `Recherche : ${query}. Donne-moi des informations sur les tendances du marché, les opportunités professionnelles, et les besoins émergents liés à ce sujet.` },
+    { role: 'system', content: 'Tu es un assistant de recherche. Fournis des informations factuelles, récentes et concises. Format: résumé en 3-5 points clés avec des données si possible.' },
+    { role: 'user', content: `Recherche : ${query}. Tendances marché, opportunités professionnelles, besoins émergents.` },
   ];
-
   try {
-    const result = await callOpenRouter(messages, apiKey, {
-      model: 'google/gemini-2.0-flash-001',
-      temperature: 0.3,
-    });
-    return result;
+    return await callOpenRouter(messages, apiKey, { model: DEFAULT_MODEL, temperature: 0.3 });
   } catch {
     return '';
   }
 }
 
-// Helpers
-function getPhaseLabel(phase: PhaseType): string {
+/**
+ * Génère un insight / cluster à partir de la mémoire complète
+ */
+export async function generateInsight(
+  memoryTree: MemoryNode[],
+  relations: MemoryRelation[],
+  apiKey: string
+): Promise<{
+  clusters: ParsedCluster[];
+  tensions: ParsedTension[];
+  insights: ParsedInsight[];
+  steps: ParsedStep[];
+  raw: string;
+}> {
+  const contextMessage = buildInsightContext(memoryTree, relations);
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT_V2 },
+    { role: 'user', content: contextMessage },
+  ];
+
+  const raw = await callOpenRouter(messages, apiKey, { temperature: 0.8, maxTokens: 3000 });
+
+  return {
+    clusters: parseClustersFromResponse(raw),
+    tensions: parseTensionsFromResponse(raw),
+    insights: parseInsightsFromResponse(raw),
+    steps: parseStepsFromResponse(raw),
+    raw,
+  };
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+export function getPhaseLabel(phase: PhaseType): string {
   const labels: Record<PhaseType, string> = {
-    amorcage: '🌱 Amorçage',
-    exploration_passion: '❤️ Exploration - Passion',
-    exploration_mission: '🌍 Exploration - Mission',
-    exploration_vocation: '💰 Exploration - Vocation',
-    exploration_profession: '🎯 Exploration - Profession',
-    classification: '🔍 Classification',
-    challenge: '⚡ Challenge',
-    synthese: '✨ Synthèse',
-    complete: '✅ Terminé',
+    amorcage: '🌱 Amorçage', exploration_passion: '❤️ Passion', exploration_mission: '🌍 Mission',
+    exploration_vocation: '💰 Vocation', exploration_profession: '🎯 Talents',
+    classification: '🔍 Classification', challenge: '⚡ Challenge', synthese: '✨ Synthèse', complete: '✅ Terminé',
   };
   return labels[phase] || phase;
 }
 
 function getNextPhase(current: PhaseType): PhaseType | null {
   const idx = PHASE_ORDER.indexOf(current);
-  if (idx < PHASE_ORDER.length - 1) return PHASE_ORDER[idx + 1];
-  return null;
-}
-
-function getCategoryEmoji(cat: string): string {
-  const emojis: Record<string, string> = {
-    passion: '❤️',
-    mission: '🌍',
-    vocation: '💰',
-    profession: '🎯',
-  };
-  return emojis[cat] || '📌';
+  return idx < PHASE_ORDER.length - 1 ? PHASE_ORDER[idx + 1] : null;
 }
 
 function getPhaseStartCount(phase: PhaseType): number {
-  const base: Record<string, number> = {
-    challenge: 12,
-    synthese: 16,
-  };
-  return base[phase] || 0;
+  return ({ challenge: 14, synthese: 18 } as Record<string, number>)[phase] || 0;
+}
+
+function countAllNodes(tree: MemoryNode[]): number {
+  let count = 0;
+  for (const node of tree) {
+    count++;
+    if (node.children) count += countAllNodes(node.children);
+  }
+  return count;
+}
+
+function flattenTree(tree: MemoryNode[]): MemoryNode[] {
+  const result: MemoryNode[] = [];
+  for (const node of tree) {
+    result.push(node);
+    if (node.children) result.push(...flattenTree(node.children));
+  }
+  return result;
+}
+
+function countByCategory(nodes: MemoryNode[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const n of nodes) {
+    counts[n.category] = (counts[n.category] || 0) + 1;
+  }
+  return counts;
+}
+
+function countByType(nodes: MemoryNode[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const n of nodes) {
+    counts[n.node_type] = (counts[n.node_type] || 0) + 1;
+  }
+  return counts;
 }
