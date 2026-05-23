@@ -60,9 +60,10 @@ Ikigai Sensei
 
 ## URLs
 
-- **Production** : À déployer sur Cloudflare Pages
+- **Production** : [https://ikigai-sensei.pages.dev](https://ikigai-sensei.pages.dev)
 - **API** : `/api/*`
 - **Session** : Chaque utilisateur a un ID de session unique stocké en localStorage
+- **Statut** : ✅ Déployé et opérationnel
 
 ## Guide d'utilisation
 
@@ -108,18 +109,18 @@ npm run dev:sandbox
 
 ```bash
 # Créer la base D1
-npx wrangler d1 create webapp-production
+npx wrangler d1 create ikigai-sensei-production
 
 # Ajouter database_id dans wrangler.jsonc
 
 # Appliquer les migrations
-npm run db:migrate:prod
+npx wrangler d1 migrations apply ikigai-sensei-production --remote
 
-# Configurer le secret
-npx wrangler pages secret put OPENROUTER_API_KEY
+# Configurer le secret OpenRouter
+echo "sk-or-v1-ta-cle" | npx wrangler pages secret put OPENROUTER_API_KEY --project-name ikigai-sensei
 
 # Déployer
-npm run deploy
+npm run build && npx wrangler pages deploy dist --project-name ikigai-sensei
 ```
 
 ## Stack technique
